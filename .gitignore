@@ -1,0 +1,16 @@
+# Excluded by request
+notes/
+
+# Jupyter & Python checkpoints / cache
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & IDE
+.env
+.venv
+env/
+venv/
+.vscode/
+.idea/
