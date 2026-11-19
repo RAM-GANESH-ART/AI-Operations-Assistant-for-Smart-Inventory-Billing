@@ -88,6 +88,7 @@ The application translates demand forecasts into automated, actionable purchase 
 ├── SRS_v1.0_22515500047_Smart_inventory_.pdf       # System Requirements Specification
 └── smart-inventory-ai/
     ├── data/
+    │   ├── Online Retail.xlsx                      # Raw transaction dataset (UCI Online Retail)
     │   └── processed_daily_sales.csv               # Cleaned daily sales ledger (zero-filled grid)
     ├── models/
     │   └── optimized_random_forest_demand_model.joblib # Serialized best model artifact (RF-DEPTH-10)
@@ -106,7 +107,7 @@ The application translates demand forecasts into automated, actionable purchase 
         └── test_reorder_engine.py                  # Phase 6: 55-test verification suite
 ```
 
-*(Note: Raw 23 MB transaction datasets and 16 MB row-by-row prediction CSVs are excluded from the Git repository to keep the repository lightweight; metrics are summarized in the CSVs above).*
+*(Note: The duplicate "online+retail/" folder and 16 MB row-by-row prediction CSVs are removed from the Git repository; prediction metrics are summarized in the CSVs above).*
 
 ---
 
