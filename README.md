@@ -1,32 +1,41 @@
 # AI Operations Assistant for Smart Inventory & Billing
-> **Semester 3 Main Project** | Master's / Engineering Curriculum  
-> **Domain**: Retail Demand Forecasting, Smart Inventory Optimization & Operations AI
+> **GLA University – Semester 3 Main Project**  
+> **Domain**: Retail Demand Forecasting, Smart Inventory Optimization & Operations AI  
+> **Dataset**: UCI Online Retail Transaction Dataset (UK Retail Ledger)  
+> **Target**: 7-Day Forward Product Demand (`Future7DayDemand` in units)  
 
 ---
 
-## 📊 Model Performance: MAE vs Baseline Comparison
+## 📊 Model Performance: Baseline vs. Random Forest (MAE Comparison)
 
-The core objective of the predictive engine is forecasting **7-day future demand (`Future7DayDemand`)** for retail products using chronological train/validation/test splits to eliminate lookahead bias and data leakage.
+The predictive engine forecasts **7-day forward product demand (`Future7DayDemand`)** using strictly chronological train/validation/test splits with a **7-day calendar purge buffer** at all boundaries to eliminate lookahead bias and future-data leakage.
 
-### Final Holdout Test Evaluation
+### Final Holdout Test Evaluation (Unseen Test Data)
 
-| Model | Test MAE ↓ | Test RMSE ↓ | Test $R^2$ ↑ | Improvement vs Level 0 | Improvement vs Level 1 | Status |
+The table below compares the naive and heuristic baselines against the machine learning Random Forest regressors on the final holdout test set (`289,777` chronological observations):
+
+| Model Architecture | Test MAE ↓ | Test RMSE ↓ | Test $R^2$ ↑ | Improvement vs. Level 0 | Improvement vs. Level 1 | Evaluation Status |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Level 0 Baseline (Global Mean)** | `38.9465` | `188.9420` | `-0.0077` | *Baseline* | — | Naive Reference |
 | **Level 1 Baseline (Product Historical Mean)** | `28.7596` | `182.2648` | `+0.0623` | +26.16% | *Baseline* | Historical Heuristic |
-| **Random Forest (Initial Baseline Model)** | `26.4215` | `178.5120` | `+0.1004` | +32.16% | +8.13% | Feature Engineered |
-| **Optimized Random Forest (`RF-DEPTH-10`)** | **`24.2222`** | **`174.7635`** | **`+0.1379`** | **+37.81%** | **+15.78%** | **Selected Best Model** |
+| **Initial Random Forest Regressor** | `26.4215` | `178.5120` | `+0.1004` | +32.16% | +8.13% | Feature Engineered |
+| **Optimized Random Forest (`RF-DEPTH-10`)** ⭐ | **`24.2222`** | **`174.7635`** | **`+0.1379`** | **+37.81%** | **+15.78%** | **Selected Production Model** |
 
-> **Key Takeaway**:  
-> The **Optimized Random Forest (`RF-DEPTH-10`)** achieves an MAE of **24.22 units**, outperforming the Level 0 global baseline by **37.81%** and beating the product-level historical moving average (Level 1) by **15.78%** on unseen holdout test data.
+> [!NOTE]
+> **Understanding Level 0 Forecast vs. Error**:
+> - **Prediction Value**: The Level 0 model predicts a constant value of **`18.3150` units** for every observation (the global training set mean of 7-day demand). This is also the fallback demand value applied in the inventory engine (FR-2.4) when an ML forecast is unavailable.
+> - **Test Error (MAE)**: The **`38.9465`** (or `39.1022` in Notebook 02) metric is the **Mean Absolute Error** between this constant prediction and the true actual test demand.
+>
+> **Key Conclusion**:  
+> The **Optimized Random Forest (`RF-DEPTH-10`)** reduces the test MAE down to **`24.22 units`**, outperforming the Level 0 global naive baseline by **37.81%** and beating the product-level moving average (Level 1) by **15.78%**.
 
 ---
 
-### Hyperparameter Experimentation (Validation Set)
+### Hyperparameter Search & Validation Tuning
 
-Model architectures and hyperparameters were tuned strictly on the validation set (`X_inner_train` vs `X_validation`) to prevent holdout contamination:
+To prevent overfitting to holdout test data, hyperparameter tuning was conducted strictly on an internal validation set (`X_inner_train` vs. `X_validation`):
 
-| Experiment | Trees (`n_estimators`) | Max Depth (`max_depth`) | Min Leaf Samples (`min_samples_leaf`) | Validation MAE ↓ | Validation RMSE ↓ | Validation $R^2$ ↑ | Training Time |
+| Model ID | Estimators (`n_estimators`) | Max Depth (`max_depth`) | Min Leaf Samples (`min_samples_leaf`) | Validation MAE ↓ | Validation RMSE ↓ | Validation $R^2$ ↑ | Training Time |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **`RF-DEPTH-10`** ⭐ | **100** | **10** | **2** | **17.1521** | **56.8663** | **0.3667** | **~0.37 min** |
 | `RF-LEAF-5` | 100 | 15 | 5 | 17.7059 | 58.6653 | 0.3260 | ~0.43 min |
@@ -34,19 +43,19 @@ Model architectures and hyperparameters were tuned strictly on the validation se
 | `RF-200-TREES` | 200 | 15 | 2 | 17.8748 | 59.3408 | 0.3104 | ~0.83 min |
 | `RF-DEPTH-20` | 100 | 20 | 2 | 18.4679 | 60.0871 | 0.2929 | ~0.46 min |
 
-*Notice: Limiting `max_depth=10` provided the strongest regularization against retail demand noise and overfitting, yielding the lowest MAE.*
+*Depth Regularization Insight: Setting `max_depth=10` prevented the trees from memorizing demand spikes and noise, generating the strongest generalization and lowest validation error.*
 
 ---
 
-### Top Feature Importances
+### Top Feature Importances (Supervised Feature Space)
 
-| Rank | Feature | Importance | Description |
+| Rank | Feature | Importance | Operational Meaning |
 | :---: | :--- | :---: | :--- |
 | 1 | `RollingMean_30` | **51.39%** | 30-day historical moving average demand |
 | 2 | `HistoricalMean` | **23.57%** | All-time historical sales mean per SKU |
 | 3 | `RollingMean_7` | **7.32%** | Short-term 7-day sales momentum |
 | 4 | `Month` | **6.49%** | Annual seasonality pattern |
-| 5 | `AvgUnitPrice` | **5.85%** | Product pricing dynamic |
+| 5 | `AvgUnitPrice` | **5.85%** | Product pricing dynamic (forward-filled without leakage) |
 | 6 | `Year` | **1.99%** | Macro annual trend |
 | 7 | `Lag_1` | **1.20%** | Previous day sales |
 | 8 | `Lag_30` | **0.90%** | Sales from 30 days prior |
@@ -55,31 +64,49 @@ Model architectures and hyperparameters were tuned strictly on the validation se
 
 ---
 
+## 📦 Inventory Engine & Reorder Logic (Phase 6)
+
+The application translates demand forecasts into automated, actionable purchase recommendations via `reorder_engine.py`:
+
+- **SRS Reorder Quantity Formula**:
+  $$\text{SuggestedOrderQty} = \lceil\max(0, \text{PredictedDemand7Day} + \text{SafetyStock} - \text{AvailableStock})\rceil$$
+  where $\text{AvailableStock} = \text{CurrentStock} - \text{ReservedStock}$.
+- **Reorder Point (Classification Only)**:
+  $$\text{ReorderPoint} = (\text{AvgDailyDemand} \times \text{LeadTimeDays}) + \text{SafetyStock}$$
+- **Stock Statuses**: `OUT_OF_STOCK`, `CRITICAL`, `REORDER_REQUIRED`, `HEALTHY`, `OVERSTOCKED`.
+- **Level 0 Fallback (FR-2.4)**: If ML prediction is unavailable, NaN, negative, or infinite, uses `LEVEL_0_GLOBAL_TRAINING_MEAN_7DAY = 18.3150`.
+- **Manual Override (FR-2.5)**: Allows shop owner to override suggested quantity before purchase order generation.
+- **Test Coverage**: 55 unit tests (`test_reorder_engine.py`) covering calculations, edge cases, boolean type rejection, and lead-time scenarios.
+
+---
+
 ## 📁 Repository Structure
 
 ```text
-├── .gitignore
-├── README.md
-├── SRS_v1.0_22515500047_Smart_inventory_.pdf
+├── .gitignore                                      # Excludes large binaries, local caches & notes
+├── README.md                                       # Project overview, MAE benchmark & guide
+├── SRS_v1.0_22515500047_Smart_inventory_.pdf       # System Requirements Specification
 └── smart-inventory-ai/
     ├── data/
-    │   ├── Online Retail.xlsx               # Raw transaction dataset (UCI)
-    │   └── processed_daily_sales.csv        # Cleaned zero-filled daily sales ledger
+    │   └── processed_daily_sales.csv               # Cleaned daily sales ledger (zero-filled grid)
     ├── models/
-    │   └── optimized_random_forest_demand_model.joblib  # Serialized model artifact
+    │   └── optimized_random_forest_demand_model.joblib # Serialized best model artifact (RF-DEPTH-10)
     ├── notebooks/
-    │   ├── 01_data_preprocessing.ipynb      # Cleaning, UK filtering, calendar grid creation
-    │   ├── 02_baseline.ipynb                # Target definition (Future7DayDemand) & baselines
-    │   ├── 03_feature_engineering_random_forest.ipynb # Feature creation & initial RF model
-    │   └── 04_model_experimentation.ipynb  # Hyperparameter tuning, validation & test holdout
-    └── results/
-        ├── optimized_random_forest_feature_importance.csv
-        ├── optimized_random_forest_final_comparison.csv
-        ├── optimized_random_forest_test_predictions.csv
-        ├── random_forest_experiment_results.csv
-        ├── random_forest_predictions.csv
-        └── random_forest_results.csv
+    │   ├── 01_data_preprocessing.ipynb             # Data ingestion, cleaning, calendar expansion
+    │   ├── 02_baseline.ipynb                       # Target calculation, Level 0 & Level 1 baselines
+    │   ├── 03_feature_engineering_random_forest.ipynb # 10-feature pipeline & initial Random Forest
+    │   └── 04_model_experimentation.ipynb         # Validation hyperparameter search & test holdout
+    ├── results/
+    │   ├── optimized_random_forest_feature_importance.csv
+    │   ├── optimized_random_forest_final_comparison.csv
+    │   ├── random_forest_experiment_results.csv
+    │   └── random_forest_results.csv
+    └── services/
+        ├── reorder_engine.py                       # Phase 6: Inventory reorder engine
+        └── test_reorder_engine.py                  # Phase 6: 55-test verification suite
 ```
+
+*(Note: Raw 23 MB transaction datasets and 16 MB row-by-row prediction CSVs are excluded from the Git repository to keep the repository lightweight; metrics are summarized in the CSVs above).*
 
 ---
 
@@ -92,24 +119,22 @@ All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). Th
 
 ### Quickstart
 
-1. **Clone repository and install dependencies**:
+1. **Install dependencies**:
    ```bash
-   git clone <repo-url>
-   cd "main project"
-   pip install pandas numpy scikit-learn openpyxl matplotlib joblib jupyter nbconvert
+   pip install pandas numpy scikit-learn openpyxl matplotlib joblib jupyter
    ```
 
-2. **Run Notebooks in Sequence**:
-   - `01_data_preprocessing.ipynb`: Processes raw transactions into a daily demand ledger.
-   - `02_baseline.ipynb`: Establishes Level 0 and Level 1 benchmarks.
-   - `03_feature_engineering_random_forest.ipynb`: Constructs feature space and initial model.
-   - `04_model_experimentation.ipynb`: Runs validation search and serializes final model artifact.
+2. **Run Reorder Engine Unit Tests**:
+   ```bash
+   python smart-inventory-ai/services/test_reorder_engine.py
+   ```
+   *(Expected output: `Ran 55 tests in 0.003s — OK`)*
 
 3. **Inference with Saved Model**:
    ```python
    import joblib
 
-   # Load model artifact
+   # Load serialized model artifact
    artifact = joblib.load("smart-inventory-ai/models/optimized_random_forest_demand_model.joblib")
    model = artifact["model"]
    features = artifact["feature_columns"]

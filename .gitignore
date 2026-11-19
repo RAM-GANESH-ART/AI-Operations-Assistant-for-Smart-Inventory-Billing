@@ -14,3 +14,9 @@ env/
 venv/
 .vscode/
 .idea/
+
+# Large raw datasets & prediction outputs (avoids repository bloat)
+*.xlsx
+online+retail/
+*predictions*.csv
+smart-inventory-ai/services/backups/
