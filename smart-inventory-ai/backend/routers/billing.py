@@ -4,7 +4,7 @@ Point-of-sale checkout endpoints with transactional inventory integration.
 """
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from connection import get_connection
@@ -14,6 +14,7 @@ from billing_service import (
     InsufficientStockError,
     ProductNotFoundError,
 )
+from idempotency_service import IdempotencyService
 
 router = APIRouter()
 
@@ -63,14 +64,47 @@ class InvoiceListResponse(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 @router.post("/billing/checkout", response_model=InvoiceReceiptOut, status_code=201)
-def process_checkout(request: CheckoutRequest):
+def process_checkout(
+    request: CheckoutRequest,
+    response: Response,
+    idempotency_key: Optional[str] = Header(
+        None,
+        alias="Idempotency-Key",
+        description="Optional unique client request key to safely retry checkouts without duplicate billing.",
+    ),
+):
     """
     Process a point-of-sale customer checkout.
 
     Atomically validates stock, creates the invoice, deducts inventory,
     and records stock movements. Rolls back completely on failure.
     Uses row-level locks (SELECT FOR UPDATE) to prevent overselling.
+    Supports optional Idempotency-Key header for duplicate-safe retries.
     """
+    # -----------------------------------------------------------------------
+    # 1. Check idempotency if client provided Idempotency-Key
+    # -----------------------------------------------------------------------
+    if idempotency_key:
+        payload_dict = request.model_dump()
+        request_hash = IdempotencyService.compute_hash(payload_dict)
+        outcome, data = IdempotencyService.claim_or_fetch(idempotency_key, request_hash)
+
+        if outcome == "MISMATCH":
+            raise HTTPException(
+                status_code=422,
+                detail="Idempotency key reused with a different request payload.",
+            )
+        elif outcome == "IN_PROGRESS":
+            raise HTTPException(
+                status_code=409,
+                detail="A checkout with this idempotency key is currently in progress. Please retry shortly.",
+            )
+        elif outcome == "SUCCEEDED":
+            code, cached_body = data
+            response.status_code = code
+            return InvoiceReceiptOut(**cached_body)
+        # outcome == "CLAIMED": continue to process checkout
+
     cart_items = [
         CartItem(stock_code=item.stock_code, quantity=item.quantity)
         for item in request.items
@@ -84,13 +118,23 @@ def process_checkout(request: CheckoutRequest):
             payment_method=request.payment_method,
         )
     except InsufficientStockError as e:
+        if idempotency_key:
+            IdempotencyService.remove_key(idempotency_key)
         raise HTTPException(status_code=409, detail=str(e))
     except ProductNotFoundError as e:
+        if idempotency_key:
+            IdempotencyService.remove_key(idempotency_key)
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
+        if idempotency_key:
+            IdempotencyService.remove_key(idempotency_key)
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        if idempotency_key:
+            IdempotencyService.remove_key(idempotency_key)
+        raise
 
-    return InvoiceReceiptOut(
+    receipt_out = InvoiceReceiptOut(
         invoice_id=receipt.invoice_id,
         invoice_no=receipt.invoice_no,
         customer_name=receipt.customer_name,
@@ -107,6 +151,11 @@ def process_checkout(request: CheckoutRequest):
             for it in receipt.items
         ],
     )
+
+    if idempotency_key:
+        IdempotencyService.save_success(idempotency_key, 201, receipt_out.model_dump())
+
+    return receipt_out
 
 
 @router.get("/invoices/{invoice_no}")

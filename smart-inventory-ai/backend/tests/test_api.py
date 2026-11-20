@@ -126,7 +126,7 @@ class TestBackendAPI(unittest.TestCase):
         self.assertIn("items", data)
         self.assertIn("summary", data)
         self.assertEqual(len(data["items"]), 20)
-        self.assertIn("total_items_analyzed", data["summary"])
+        self.assertIn("HEALTHY", data["summary"])
 
     def test_09_reorder_status_filter(self):
         """Status filter should only return items with specified stock status."""
@@ -205,6 +205,76 @@ class TestBackendAPI(unittest.TestCase):
         self.assertIn("total", data)
         self.assertIn("invoices", data)
         self.assertGreaterEqual(data["total"], 1)
+
+    # -----------------------------------------------------------------------
+    # 7. Idempotency & Retry Safety
+    # -----------------------------------------------------------------------
+    def test_15_billing_idempotency_checkout_success(self):
+        """Checkout with Idempotency-Key succeeds and registers the key."""
+        payload = {
+            "customer_name": "Idempotency Test User",
+            "payment_method": "CASH",
+            "items": [{"stock_code": "10002", "quantity": 1}],
+        }
+        headers = {"Idempotency-Key": "test-idemp-key-101"}
+        response = self.client.post("/api/billing/checkout", json=payload, headers=headers)
+        self.assertEqual(response.status_code, 201)
+        receipt = response.json()
+        self.assertIn("invoice_no", receipt)
+        self.assertEqual(receipt["customer_name"], "Idempotency Test User")
+
+    def test_16_billing_idempotency_replay_prevents_duplicate_billing(self):
+        """Replaying identical request with same key returns cached receipt without deducting stock."""
+        # Check current stock before replay
+        prod_before = self.client.get("/api/products/10002").json()
+        stock_before = prod_before["current_stock"]
+
+        # Re-send same request with same Idempotency-Key
+        payload = {
+            "customer_name": "Idempotency Test User",
+            "payment_method": "CASH",
+            "items": [{"stock_code": "10002", "quantity": 1}],
+        }
+        headers = {"Idempotency-Key": "test-idemp-key-101"}
+        response = self.client.post("/api/billing/checkout", json=payload, headers=headers)
+        self.assertEqual(response.status_code, 201)
+
+        # Check stock after replay: must be completely unchanged
+        prod_after = self.client.get("/api/products/10002").json()
+        stock_after = prod_after["current_stock"]
+        self.assertEqual(stock_before, stock_after)
+
+    def test_17_billing_idempotency_payload_mismatch_rejected(self):
+        """Reusing an idempotency key with a different payload must fail with HTTP 422."""
+        payload_altered = {
+            "customer_name": "Different Customer Name",
+            "payment_method": "CARD",
+            "items": [{"stock_code": "10002", "quantity": 5}],
+        }
+        headers = {"Idempotency-Key": "test-idemp-key-101"}
+        response = self.client.post("/api/billing/checkout", json=payload_altered, headers=headers)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("different request payload", response.json()["detail"])
+
+    def test_18_billing_idempotency_failed_request_allows_clean_retry(self):
+        """Failed checkout (e.g. invalid SKU) cleans up key to allow immediate retry."""
+        headers = {"Idempotency-Key": "test-retry-key-202"}
+        invalid_payload = {
+            "customer_name": "Retry User",
+            "payment_method": "CASH",
+            "items": [{"stock_code": "NONEXISTENT_SKU_RETRY", "quantity": 1}],
+        }
+        resp_fail = self.client.post("/api/billing/checkout", json=invalid_payload, headers=headers)
+        self.assertEqual(resp_fail.status_code, 404)
+
+        # Immediate retry with same key but valid payload succeeds
+        valid_payload = {
+            "customer_name": "Retry User",
+            "payment_method": "CASH",
+            "items": [{"stock_code": "10002", "quantity": 1}],
+        }
+        resp_success = self.client.post("/api/billing/checkout", json=valid_payload, headers=headers)
+        self.assertEqual(resp_success.status_code, 201)
 
 
 if __name__ == "__main__":

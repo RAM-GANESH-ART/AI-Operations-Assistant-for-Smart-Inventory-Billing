@@ -21,6 +21,7 @@
 -- ============================================================================
 
 -- Drop tables in reverse order of foreign key dependency if re-deploying
+DROP TABLE IF EXISTS idempotency_keys CASCADE;
 DROP TABLE IF EXISTS invoice_items CASCADE;
 DROP TABLE IF EXISTS invoices CASCADE;
 DROP TABLE IF EXISTS demand_forecasts CASCADE;
@@ -164,6 +165,21 @@ CREATE INDEX idx_invoices_no ON invoices(invoice_no);
 CREATE INDEX idx_invoices_date ON invoices(invoice_date);
 CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
 CREATE INDEX idx_invoice_items_stock_code ON invoice_items(stock_code);
+
+-- ----------------------------------------------------------------------------
+-- 8. Idempotency Keys Table (POS Double-Billing & Retry Protection)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    key VARCHAR(128) PRIMARY KEY,
+    request_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('IN_PROGRESS', 'SUCCEEDED', 'FAILED')),
+    response_code INTEGER,
+    response_body JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created ON idempotency_keys(created_at);
 
 -- ============================================================================
 -- PART 2: FUTURE SCOPE – SUPPLIER & PURCHASE ORDER MANAGEMENT (POST-PHASE 7)

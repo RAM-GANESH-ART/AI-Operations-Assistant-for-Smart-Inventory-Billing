@@ -96,7 +96,7 @@ The application translates demand forecasts into automated, actionable purchase 
     │   │   ├── billing.py                          # POS checkout, atomic invoice generation & receipts
     │   │   └── dashboard.py                        # KPI aggregation, valuation & low-stock alerts
     │   └── tests/
-    │       └── test_api.py                         # 14-test FastAPI endpoint verification suite
+    │       └── test_api.py                         # 18-test FastAPI endpoint & idempotency verification suite
     ├── data/
     │   ├── Online Retail.xlsx                      # Raw transaction dataset (UCI Online Retail)
     │   └── processed_daily_sales.csv               # Cleaned daily sales ledger (zero-filled grid)
@@ -122,7 +122,8 @@ The application translates demand forecasts into automated, actionable purchase 
     └── services/
         ├── reorder_engine.py                       # Phase 6: Inventory reorder engine
         ├── test_reorder_engine.py                  # Phase 6: 55-test verification suite
-        └── billing_service.py                      # Phase 7: Transactional billing & concurrency control
+        ├── billing_service.py                      # Phase 7: Transactional billing & concurrency control
+        └── idempotency_service.py                  # Atomic idempotency keys & POS retry safety
 ```
 
 *(Note: The duplicate "online+retail/" folder and 16 MB row-by-row prediction CSVs are removed from the Git repository; prediction metrics are summarized in the CSVs above).*
@@ -166,7 +167,7 @@ The backend is built with **FastAPI** and **Uvicorn**, serving predictive demand
 | `GET` | `/api/products/{stock_code}` | Detailed stock levels (`current_stock`, `reserved_stock`, `available_stock`, `minimum_stock`) |
 | `GET` | `/api/forecast/{stock_code}` | 7-day demand forecast via loaded `RF-DEPTH-10` model (or Level 0 `18.3150` fallback) |
 | `GET` | `/api/reorder-recommendations` | Automated purchase order quantities and status classifications (`status_filter`, `limit`) |
-| `POST` | `/api/billing/checkout` | POS checkout: validates stock, creates invoice, updates inventory, and logs movements atomically |
+| `POST` | `/api/billing/checkout` | POS checkout: validates stock, creates invoice, updates inventory, and logs movements atomically (supports `Idempotency-Key` header) |
 | `GET` | `/api/invoices` | List recent customer invoices with pagination and status filters |
 | `GET` | `/api/invoices/{invoice_no}` | Fetch detailed invoice receipt with itemized lines |
 | `GET` | `/api/dashboard/summary` | Management dashboard KPIs: total products, valuation, revenue, and critical inventory alerts |
@@ -175,6 +176,7 @@ The backend is built with **FastAPI** and **Uvicorn**, serving predictive demand
 - **Lifespan Model Serving**: Loads the `optimized_random_forest_demand_model.joblib` (RF-DEPTH-10) once at server startup into memory, preventing per-request disk I/O overhead.
 - **Fail-Safe Fallback**: If an unseen SKU or SKU with sparse history is queried, seamlessly applies the Level 0 Global Training Mean (`18.3150` units) and flags `is_fallback: true`.
 - **Atomic POS Checkout**: Delegates to `BillingService` using row-level pessimistic locks (`FOR UPDATE`) to guarantee zero overselling and full rollback on stock deficits.
+- **Idempotency & Retry Safety**: Point-of-sale checkout endpoint honors an `Idempotency-Key` header with atomic PostgreSQL key claiming (`ON CONFLICT DO NOTHING`), request payload SHA-256 hash verification (rejects tampering with HTTP 422), and cached response replays.
 
 ---
 
@@ -210,7 +212,7 @@ All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). Th
    ```bash
    python smart-inventory-ai/backend/tests/test_api.py
    ```
-   *(Expected output: `Ran 14 tests — OK`)*
+   *(Expected output: `Ran 18 tests — OK`)*
 
 5. **Start FastAPI Backend Server**:
    ```bash
