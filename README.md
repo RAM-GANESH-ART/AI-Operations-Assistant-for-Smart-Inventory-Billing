@@ -90,6 +90,13 @@ The application translates demand forecasts into automated, actionable purchase 
     ├── data/
     │   ├── Online Retail.xlsx                      # Raw transaction dataset (UCI Online Retail)
     │   └── processed_daily_sales.csv               # Cleaned daily sales ledger (zero-filled grid)
+    ├── database/
+    │   ├── schema.sql                              # Phase 7: PostgreSQL 16 DDL & relational schema (7 core tables)
+    │   ├── connection.py                           # Database connection & transaction manager
+    │   ├── init_db.py                              # Database creation & schema deployment
+    │   ├── import_sales.py                         # 1.46M row bulk COPY & aggregate validator
+    │   ├── seed_demo_data.py                       # Clearly labeled demo seed records
+    │   └── test_database.py                        # Phase 7: 12-test database integrity & concurrency suite
     ├── models/
     │   └── optimized_random_forest_demand_model.joblib # Serialized best model artifact (RF-DEPTH-10)
     ├── notebooks/
@@ -104,10 +111,34 @@ The application translates demand forecasts into automated, actionable purchase 
     │   └── random_forest_results.csv
     └── services/
         ├── reorder_engine.py                       # Phase 6: Inventory reorder engine
-        └── test_reorder_engine.py                  # Phase 6: 55-test verification suite
+        ├── test_reorder_engine.py                  # Phase 6: 55-test verification suite
+        └── billing_service.py                      # Phase 7: Transactional billing & concurrency control
 ```
 
 *(Note: The duplicate "online+retail/" folder and 16 MB row-by-row prediction CSVs are removed from the Git repository; prediction metrics are summarized in the CSVs above).*
+
+---
+
+## 🗄️ Database Architecture & Billing Integration (Phase 7)
+
+The application implements an operational PostgreSQL 16 database designed for retail inventory management, demand forecasting, and point-of-sale billing:
+
+### Current Scope: Seven Core Tables
+1. **`users`**: Operator authentication and RBAC (`OWNER`, `MANAGER`, `CASHIER`).
+2. **`products`**: Master SKU catalog with integrity constraints (`current_stock >= 0`, `reserved_stock <= current_stock`, `unit_price >= 0`, `lead_time_days > 0`).
+3. **`stock_movements`**: Immutable audit ledger tracking all additions, sales, returns, and adjustments.
+4. **`daily_product_sales`**: 1,464,584 historical daily sales records aggregated from transaction data.
+5. **`demand_forecasts`**: 7-day model predictions and fallback audit tracking (`18.3150`).
+6. **`invoices`**: POS checkout receipts with unique invoice numbering and payment methods.
+7. **`invoice_items`**: Line items per invoice linking quantities, unit prices, and product SKUs.
+
+### Future Scope: Supplier Management (Decoupled)
+Supplier directory (`suppliers`), purchase orders (`purchase_orders`), line items (`purchase_order_items`), automated PO generation, and delivery lead-time tracking are marked as future scope. The 7 core tables maintain zero foreign keys or runtime dependencies on supplier tables.
+
+### Transactional Billing & Concurrency Safety
+- **Workflow**: `BillingService.process_checkout()` validates stock, creates invoice headers, inserts line items, reduces inventory, and records `'SALE'` stock movement records within a single database transaction.
+- **Atomic Rollback (NFR-4)**: If any cart item has insufficient stock or encounters an error, the complete transaction rolls back automatically without partial writes or stock deductions.
+- **Race Condition & Overselling Protection**: Employs row-level pessimistic locking (`SELECT ... FOR UPDATE`) during checkout. Concurrent purchases serialize smoothly, preventing overselling under high-concurrency race conditions.
 
 ---
 
@@ -122,16 +153,24 @@ All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). Th
 
 1. **Install dependencies**:
    ```bash
-   pip install pandas numpy scikit-learn openpyxl matplotlib joblib jupyter
+   pip install pandas numpy scikit-learn openpyxl matplotlib joblib jupyter psycopg2-binary sqlalchemy
    ```
 
 2. **Run Reorder Engine Unit Tests**:
    ```bash
    python smart-inventory-ai/services/test_reorder_engine.py
    ```
-   *(Expected output: `Ran 55 tests in 0.003s — OK`)*
+   *(Expected output: `Ran 55 tests in 0.004s — OK`)*
 
-3. **Inference with Saved Model**:
+3. **Deploy Database & Run Database Tests (PostgreSQL 16)**:
+   ```bash
+   python smart-inventory-ai/database/init_db.py
+   python smart-inventory-ai/database/import_sales.py
+   python smart-inventory-ai/database/test_database.py
+   ```
+   *(Expected output: `Ran 12 tests in ~7s — OK`)*
+
+4. **Inference with Saved Model**:
    ```python
    import joblib
 
