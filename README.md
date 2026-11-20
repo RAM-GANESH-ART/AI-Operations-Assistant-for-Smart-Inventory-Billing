@@ -87,6 +87,16 @@ The application translates demand forecasts into automated, actionable purchase 
 ├── README.md                                       # Project overview, MAE benchmark & guide
 ├── SRS_v1.0_22515500047_Smart_inventory_.pdf       # System Requirements Specification
 └── smart-inventory-ai/
+    ├── backend/
+    │   ├── main.py                                 # FastAPI application entry point, lifespan & CORS
+    │   ├── routers/
+    │   │   ├── products.py                         # Catalog browsing, search & low-stock filtering
+    │   │   ├── forecast.py                         # ML demand prediction (RF-DEPTH-10 & Level 0 fallback)
+    │   │   ├── reorder.py                          # Reorder recommendations & stock status filters
+    │   │   ├── billing.py                          # POS checkout, atomic invoice generation & receipts
+    │   │   └── dashboard.py                        # KPI aggregation, valuation & low-stock alerts
+    │   └── tests/
+    │       └── test_api.py                         # 14-test FastAPI endpoint verification suite
     ├── data/
     │   ├── Online Retail.xlsx                      # Raw transaction dataset (UCI Online Retail)
     │   └── processed_daily_sales.csv               # Cleaned daily sales ledger (zero-filled grid)
@@ -142,6 +152,32 @@ Supplier directory (`suppliers`), purchase orders (`purchase_orders`), line item
 
 ---
 
+## 🚀 Backend REST API Service
+
+The backend is built with **FastAPI** and **Uvicorn**, serving predictive demand forecasts, real-time inventory management, automated purchase recommendations, and transactional POS billing.
+
+### Key API Endpoints
+
+| Method | Endpoint | Description |
+| :---: | :--- | :--- |
+| `GET` | `/` | API health check and ML model loading status |
+| `GET` | `/docs` | Interactive Swagger UI API documentation |
+| `GET` | `/api/products` | Browse product catalog with pagination (`page`, `page_size`), `search`, and `low_stock` filtering |
+| `GET` | `/api/products/{stock_code}` | Detailed stock levels (`current_stock`, `reserved_stock`, `available_stock`, `minimum_stock`) |
+| `GET` | `/api/forecast/{stock_code}` | 7-day demand forecast via loaded `RF-DEPTH-10` model (or Level 0 `18.3150` fallback) |
+| `GET` | `/api/reorder-recommendations` | Automated purchase order quantities and status classifications (`status_filter`, `limit`) |
+| `POST` | `/api/billing/checkout` | POS checkout: validates stock, creates invoice, updates inventory, and logs movements atomically |
+| `GET` | `/api/invoices` | List recent customer invoices with pagination and status filters |
+| `GET` | `/api/invoices/{invoice_no}` | Fetch detailed invoice receipt with itemized lines |
+| `GET` | `/api/dashboard/summary` | Management dashboard KPIs: total products, valuation, revenue, and critical inventory alerts |
+
+### Architecture Highlights
+- **Lifespan Model Serving**: Loads the `optimized_random_forest_demand_model.joblib` (RF-DEPTH-10) once at server startup into memory, preventing per-request disk I/O overhead.
+- **Fail-Safe Fallback**: If an unseen SKU or SKU with sparse history is queried, seamlessly applies the Level 0 Global Training Mean (`18.3150` units) and flags `is_fallback: true`.
+- **Atomic POS Checkout**: Delegates to `BillingService` using row-level pessimistic locks (`FOR UPDATE`) to guarantee zero overselling and full rollback on stock deficits.
+
+---
+
 ## 🛠️ Portable Execution & Path Resolution
 
 All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). There are **no machine-specific or hardcoded user paths**, allowing seamless execution whether run:
@@ -153,7 +189,7 @@ All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). Th
 
 1. **Install dependencies**:
    ```bash
-   pip install pandas numpy scikit-learn openpyxl matplotlib joblib jupyter psycopg2-binary sqlalchemy
+   pip install pandas numpy scikit-learn openpyxl matplotlib joblib jupyter psycopg2-binary sqlalchemy fastapi uvicorn pydantic httpx
    ```
 
 2. **Run Reorder Engine Unit Tests**:
@@ -170,7 +206,20 @@ All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). Th
    ```
    *(Expected output: `Ran 12 tests in ~7s — OK`)*
 
-4. **Inference with Saved Model**:
+4. **Run Backend API Test Suite**:
+   ```bash
+   python smart-inventory-ai/backend/tests/test_api.py
+   ```
+   *(Expected output: `Ran 14 tests — OK`)*
+
+5. **Start FastAPI Backend Server**:
+   ```bash
+   cd smart-inventory-ai/backend
+   python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+   ```
+   Interactive Swagger docs available at: `http://127.0.0.1:8000/docs`
+
+6. **Inference with Saved Model**:
    ```python
    import joblib
 
