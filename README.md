@@ -97,6 +97,15 @@ The application translates demand forecasts into automated, actionable purchase 
     │   │   └── dashboard.py                        # KPI aggregation, valuation & low-stock alerts
     │   └── tests/
     │       └── test_api.py                         # 18-test FastAPI endpoint & idempotency verification suite
+    ├── frontend/
+    │   ├── src/
+    │   │   ├── components/                         # Dashboard, Catalog, Forecast, Reorder, Billing, Invoices
+    │   │   ├── services/                           # Centralized API client connecting to FastAPI
+    │   │   ├── types/                              # TypeScript data contracts
+    │   │   ├── App.tsx                             # Main SPA state container & navigation
+    │   │   └── main.tsx                            # React DOM entry point
+    │   ├── package.json                            # React 19, Vite & Lucide dependencies
+    │   └── vite.config.ts                          # Vite build & proxy configuration
     ├── data/
     │   ├── Online Retail.xlsx                      # Raw transaction dataset (UCI Online Retail)
     │   └── processed_daily_sales.csv               # Cleaned daily sales ledger (zero-filled grid)
@@ -221,7 +230,14 @@ All notebooks utilize **portable, dynamic path resolution** (`pathlib.Path`). Th
    ```
    Interactive Swagger docs available at: `http://127.0.0.1:8000/docs`
 
-6. **Inference with Saved Model**:
+6. **Start React Frontend Web Application**:
+   ```bash
+   cd smart-inventory-ai/frontend
+   npm run dev
+   ```
+   Interactive web application available at: `http://localhost:5173`
+
+7. **Inference with Saved Model**:
    ```python
    import joblib
 

@@ -88,6 +88,7 @@ app.include_router(dashboard.router, prefix="/api", tags=["Dashboard"])
 
 
 @app.get("/", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
 def health_check():
     """API health check and model status."""
     return {

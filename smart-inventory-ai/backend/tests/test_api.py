@@ -14,6 +14,7 @@ Automated tests covering all REST API endpoints:
 
 import sys
 import unittest
+import uuid
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -211,12 +212,13 @@ class TestBackendAPI(unittest.TestCase):
     # -----------------------------------------------------------------------
     def test_15_billing_idempotency_checkout_success(self):
         """Checkout with Idempotency-Key succeeds and registers the key."""
+        TestBackendAPI.shared_idemp_key = f"test-idemp-{uuid.uuid4().hex[:8]}"
         payload = {
             "customer_name": "Idempotency Test User",
             "payment_method": "CASH",
             "items": [{"stock_code": "10002", "quantity": 1}],
         }
-        headers = {"Idempotency-Key": "test-idemp-key-101"}
+        headers = {"Idempotency-Key": TestBackendAPI.shared_idemp_key}
         response = self.client.post("/api/billing/checkout", json=payload, headers=headers)
         self.assertEqual(response.status_code, 201)
         receipt = response.json()
@@ -235,7 +237,7 @@ class TestBackendAPI(unittest.TestCase):
             "payment_method": "CASH",
             "items": [{"stock_code": "10002", "quantity": 1}],
         }
-        headers = {"Idempotency-Key": "test-idemp-key-101"}
+        headers = {"Idempotency-Key": TestBackendAPI.shared_idemp_key}
         response = self.client.post("/api/billing/checkout", json=payload, headers=headers)
         self.assertEqual(response.status_code, 201)
 
@@ -251,14 +253,15 @@ class TestBackendAPI(unittest.TestCase):
             "payment_method": "CARD",
             "items": [{"stock_code": "10002", "quantity": 5}],
         }
-        headers = {"Idempotency-Key": "test-idemp-key-101"}
+        headers = {"Idempotency-Key": TestBackendAPI.shared_idemp_key}
         response = self.client.post("/api/billing/checkout", json=payload_altered, headers=headers)
         self.assertEqual(response.status_code, 422)
         self.assertIn("different request payload", response.json()["detail"])
 
     def test_18_billing_idempotency_failed_request_allows_clean_retry(self):
         """Failed checkout (e.g. invalid SKU) cleans up key to allow immediate retry."""
-        headers = {"Idempotency-Key": "test-retry-key-202"}
+        retry_key = f"test-retry-{uuid.uuid4().hex[:8]}"
+        headers = {"Idempotency-Key": retry_key}
         invalid_payload = {
             "customer_name": "Retry User",
             "payment_method": "CASH",
