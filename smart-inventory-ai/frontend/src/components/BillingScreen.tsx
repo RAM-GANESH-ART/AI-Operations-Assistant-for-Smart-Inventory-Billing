@@ -65,10 +65,10 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
     };
   }, []);
 
-  // Combine rich categorized prototype products with any backend products
+  // Combine rich categorized store catalog products with any backend products
   const allCatalogProducts = useMemo(() => {
     const map = new Map<string, Product>();
-    // Seed with all 100 prototype items (with real categories & emojis)
+    // Seed with all 100 catalog items (with real categories & emojis)
     STORE_PRODUCTS.forEach((p) => map.set(p.stock_code, p));
     // Overlay any backend loaded products
     products.forEach((p) => {
@@ -131,7 +131,7 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
     onShowToast(`Added "${p.product_name}" to order`, 'success');
   };
 
-  // Calculations matching prototype: GST 5% (CGST 2.5%, SGST 2.5%)
+  // Calculations: GST 5% (CGST 2.5%, SGST 2.5%)
   const subtotal = cart.reduce((sum, item) => sum + item.line_total, 0);
   const cgst = Math.round(subtotal * 0.025 * 100) / 100;
   const sgst = Math.round(subtotal * 0.025 * 100) / 100;
@@ -391,174 +391,6 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Visual Interactive Product Catalog Shelf */}
-          <div className="pos-products-shelf" style={{ marginBottom: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {selectedCategory === 'all'
-                    ? `All Products (${displayedProducts.length} items)`
-                    : `${CATEGORIES.find((c) => c.id.toLowerCase() === selectedCategory.toLowerCase())?.emoji || '🏷️'} ${
-                        CATEGORIES.find((c) => c.id.toLowerCase() === selectedCategory.toLowerCase())?.label || selectedCategory
-                      } (${displayedProducts.length} items)`}
-                </span>
-                {searchQuery && (
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      color: '#60a5fa',
-                      background: 'rgba(59, 130, 246, 0.15)',
-                      border: '1px solid rgba(59, 130, 246, 0.3)',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    Scoped search: "{searchQuery}"
-                  </span>
-                )}
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                Click any product to add to order
-              </span>
-            </div>
-
-            {displayedProducts.length === 0 ? (
-              <div
-                style={{
-                  padding: '24px 16px',
-                  textAlign: 'center',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  borderRadius: '10px',
-                  border: '1px dashed var(--border)',
-                  marginBottom: '14px',
-                }}
-              >
-                <div style={{ fontSize: '26px', marginBottom: '6px' }}>🔍</div>
-                <p style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                  No {selectedCategory !== 'all' ? selectedCategory : ''} products matching "{searchQuery}"
-                </p>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                  Search is scoped strictly to the selected {selectedCategory} category.
-                </p>
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                  <button
-                    type="button"
-                    className="btn-outline"
-                    style={{ fontSize: '12px', padding: '5px 12px' }}
-                    onClick={() => setSearchQuery('')}
-                  >
-                    Clear Search
-                  </button>
-                  {selectedCategory !== 'all' && (
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      style={{ fontSize: '12px', padding: '5px 12px' }}
-                      onClick={() => setSelectedCategory('all')}
-                    >
-                      Search across All Items
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div
-                className="pos-product-cards-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-                  gap: '10px',
-                  maxHeight: '230px',
-                  overflowY: 'auto',
-                  paddingRight: '4px',
-                  paddingBottom: '4px',
-                }}
-              >
-                {displayedProducts.map((p) => {
-                  const cartQty = cart.find((item) => item.stock_code === p.stock_code)?.quantity || 0;
-                  return (
-                    <div
-                      key={p.stock_code}
-                      onClick={() => handleSelectProduct(p)}
-                      className="pos-product-card"
-                      style={{
-                        background: cartQty > 0 ? 'rgba(59, 130, 246, 0.10)' : 'var(--bg-input)',
-                        border: cartQty > 0 ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid var(--border)',
-                        borderRadius: '9px',
-                        padding: '10px 12px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        position: 'relative',
-                      }}
-                      title={`Click to add "${p.product_name}" to order`}
-                    >
-                      {cartQty > 0 && (
-                        <span
-                          style={{
-                            position: 'absolute',
-                            top: '6px',
-                            right: '6px',
-                            background: 'var(--blue)',
-                            color: '#fff',
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: '10px',
-                          }}
-                        >
-                          ×{cartQty}
-                        </span>
-                      )}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '20px' }}>{p.emoji || '📦'}</span>
-                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                            {p.stock_code}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '12.5px',
-                            fontWeight: 600,
-                            color: 'var(--text-primary)',
-                            lineHeight: 1.3,
-                            marginBottom: '6px',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {p.product_name}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginTop: '6px',
-                          paddingTop: '6px',
-                          borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-                        }}
-                      >
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#34d399' }}>
-                          ₹{p.unit_price.toFixed(0)}
-                        </span>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                          {p.available_stock} left
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
           {/* Selected Product Banner */}

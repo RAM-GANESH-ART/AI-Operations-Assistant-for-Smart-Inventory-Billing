@@ -1,6 +1,6 @@
 /**
  * TypeScript Data Contracts for Smart Inventory & Billing Frontend
- * Matches FastAPI backend REST API schemas and prototype screens.
+ * Matches FastAPI backend REST API schemas and UI screens.
  */
 
 export type ScreenId =

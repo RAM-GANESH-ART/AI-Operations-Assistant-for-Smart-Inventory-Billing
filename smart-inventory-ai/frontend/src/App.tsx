@@ -140,7 +140,7 @@ export function App() {
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      {/* Prototype Sidebar */}
+      {/* Navigation Sidebar */}
       <Sidebar
         activeScreen={activeScreen}
         onSelectScreen={setActiveScreen}
@@ -149,7 +149,7 @@ export function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Prototype Top Header */}
+        {/* Top Header */}
         <TopHeader
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           onSelectScreen={setActiveScreen}
@@ -159,7 +159,7 @@ export function App() {
           onShowToast={showToast}
         />
 
-        {/* 9 Prototype Screens */}
+        {/* Application Screens */}
         <div className="screens-container">
           {activeScreen === 'dashboard' && (
             <DashboardScreen onNavigate={setActiveScreen} />

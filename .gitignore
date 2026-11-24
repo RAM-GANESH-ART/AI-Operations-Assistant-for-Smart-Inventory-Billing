@@ -22,3 +22,5 @@ online+retail/
 *predictions*.csv
 smart-inventory-ai/services/backups/
 smart-inventory-ai/database/backups/
+*seed*.py
+prototype/
