@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../services/api';
 import { STORE_PRODUCTS } from '../services/storeProducts';
 import { CartItem, InvoiceReceipt, Product } from '../types';
@@ -42,6 +42,28 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card'>('Cash');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const comboboxRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Close popup when clicking outside the combobox and category chips
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        comboboxRef.current &&
+        !comboboxRef.current.contains(target) &&
+        !target.closest('.pos-category-bar')
+      ) {
+        setSuggestionsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Combine rich categorized prototype products with any backend products
   const allCatalogProducts = useMemo(() => {
@@ -89,11 +111,16 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
     });
   }, [allCatalogProducts, selectedCategory, searchQuery]);
 
-  const filteredSuggestions = searchQuery.trim().length > 0 ? displayedProducts.slice(0, 8) : [];
+  // Suggestions that pop up in the dropdown (shows up to 40 items)
+  const filteredSuggestions = displayedProducts.slice(0, 40);
 
   const handleCategoryClick = (catId: string) => {
     setSelectedCategory(catId);
-    setSuggestionsOpen(false);
+    setSearchQuery('');
+    setSuggestionsOpen(true); // Items immediately POP UP!
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 40);
   };
 
   const handleSelectProduct = (p: Product) => {
@@ -201,13 +228,14 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
 
           {/* Product Search & Autocomplete */}
           <div className="search-add-container">
-            <div className="search-combobox-wrapper">
+            <div className="search-combobox-wrapper" ref={comboboxRef}>
               <div className="search-input-box">
                 <svg className="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
                   <path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <input
+                  ref={searchInputRef}
                   type="text"
                   id="order-product-search"
                   className="search-input"
@@ -222,47 +250,144 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
                     setSearchQuery(e.target.value);
                     setSuggestionsOpen(true);
                   }}
-                  onFocus={() => { if (searchQuery.trim()) setSuggestionsOpen(true); }}
+                  onClick={() => setSuggestionsOpen(true)}
+                  onFocus={() => setSuggestionsOpen(true)}
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     id="order-clear-search-btn"
                     className="search-clear-btn"
-                    onClick={() => { setSearchQuery(''); setSuggestionsOpen(false); }}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSuggestionsOpen(true);
+                      searchInputRef.current?.focus();
+                    }}
                   >
                     ✕
                   </button>
                 )}
               </div>
 
-              {/* Autocomplete Suggestions Dropdown */}
-              {suggestionsOpen && filteredSuggestions.length > 0 && (
-                <div className="search-suggestions-dropdown" id="search-suggestions-dropdown" style={{ display: 'block' }}>
-                  <div className="suggestions-list" id="suggestions-list">
-                    {filteredSuggestions.map((p) => (
+              {/* Autocomplete Suggestions Popup Dropdown */}
+              {suggestionsOpen && (
+                <div
+                  className="search-suggestions-dropdown"
+                  id="search-suggestions-dropdown"
+                  style={{
+                    display: 'block',
+                    maxHeight: '340px',
+                    overflowY: 'auto',
+                    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.65)',
+                    border: '1px solid rgba(59, 130, 246, 0.5)',
+                  }}
+                >
+                  {filteredSuggestions.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      <p style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                        No {selectedCategory !== 'all' ? selectedCategory : ''} products matching "{searchQuery}"
+                      </p>
+                      <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                        Scoped strictly to {selectedCategory}.
+                      </p>
+                      {selectedCategory !== 'all' && (
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                          onClick={() => {
+                            setSelectedCategory('all');
+                            setSuggestionsOpen(true);
+                          }}
+                        >
+                          Search across All Items
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="suggestions-list" id="suggestions-list">
                       <div
-                        key={p.stock_code}
-                        className="suggestion-item"
-                        onClick={() => handleSelectProduct(p)}
-                        style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', cursor: 'pointer' }}
+                        style={{
+                          padding: '7px 14px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: '#60a5fa',
+                          background: 'rgba(59, 130, 246, 0.12)',
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 10,
+                        }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '18px' }}>{p.emoji || '📦'}</span>
-                          <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.product_name}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--blue)', fontFamily: 'monospace' }}>
-                              {p.stock_code} • {p.category || 'General'}
+                        <span>
+                          {selectedCategory === 'all'
+                            ? `📦 All Products (${filteredSuggestions.length})`
+                            : `${CATEGORIES.find((c) => c.id.toLowerCase() === selectedCategory.toLowerCase())?.emoji || '🏷️'} ${
+                                CATEGORIES.find((c) => c.id.toLowerCase() === selectedCategory.toLowerCase())?.label || selectedCategory
+                              } Products (${filteredSuggestions.length})`}
+                        </span>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                          Click any item to add to order
+                        </span>
+                      </div>
+                      {filteredSuggestions.map((p) => {
+                        const cartQty = cart.find((item) => item.stock_code === p.stock_code)?.quantity || 0;
+                        return (
+                          <div
+                            key={p.stock_code}
+                            className="suggestion-item"
+                            onClick={() => handleSelectProduct(p)}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '10px 14px',
+                              cursor: 'pointer',
+                              background: cartQty > 0 ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '20px' }}>{p.emoji || '📦'}</span>
+                              <div>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
+                                  {p.product_name}
+                                  {cartQty > 0 && (
+                                    <span
+                                      style={{
+                                        marginLeft: '8px',
+                                        background: 'var(--blue)',
+                                        color: '#fff',
+                                        fontSize: '9.5px',
+                                        fontWeight: 700,
+                                        padding: '1px 5px',
+                                        borderRadius: '8px',
+                                      }}
+                                    >
+                                      ×{cartQty} in cart
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--blue)', fontFamily: 'monospace' }}>
+                                  {p.stock_code} • <span style={{ color: 'var(--text-muted)' }}>{p.category || 'General'}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontWeight: 700, color: '#34d399', fontSize: '13px' }}>
+                                ₹{p.unit_price.toFixed(2)}
+                              </div>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                {p.available_stock} in stock
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontWeight: 700, color: '#34d399' }}>₹{p.unit_price.toFixed(2)}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{p.available_stock} in stock</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
