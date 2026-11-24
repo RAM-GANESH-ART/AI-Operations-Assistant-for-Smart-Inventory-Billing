@@ -26,6 +26,7 @@ export interface Product {
   lead_time_days: number;
   is_active: boolean;
   category?: string;
+  emoji?: string;
   sold?: number;
 }
 

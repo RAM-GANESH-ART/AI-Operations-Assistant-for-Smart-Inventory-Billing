@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { api } from '../services/api';
+import { STORE_PRODUCTS } from '../services/storeProducts';
 import { CartItem, InvoiceReceipt, Product } from '../types';
 
 interface BillingScreenProps {
@@ -12,6 +13,17 @@ interface BillingScreenProps {
   onReceiptCreated: (receipt: InvoiceReceipt) => void;
   onShowToast: (msg: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
 }
+
+const CATEGORIES = [
+  { id: 'all', label: 'All Items', emoji: '📦' },
+  { id: 'Grocery', label: 'Grocery', emoji: '🌾' },
+  { id: 'Dairy', label: 'Dairy', emoji: '🥛' },
+  { id: 'Beverages', label: 'Beverages', emoji: '🥤' },
+  { id: 'Snacks', label: 'Snacks', emoji: '🍪' },
+  { id: 'Personal', label: 'Personal Care', emoji: '🧴' },
+  { id: 'Bakery', label: 'Bakery', emoji: '🍞' },
+  { id: 'Household', label: 'Household', emoji: '🧼' },
+];
 
 export const BillingScreen: React.FC<BillingScreenProps> = ({
   products,
@@ -31,17 +43,58 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card'>('Cash');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Filter products by category & search
-  const filteredSuggestions = products.filter((p) => {
-    const matchesCat =
-      selectedCategory === 'all' ||
-      (p.category && p.category.toLowerCase() === selectedCategory.toLowerCase());
-    const matchesSearch =
-      searchQuery.trim().length > 0 &&
-      (p.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.stock_code.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCat && matchesSearch;
-  }).slice(0, 8);
+  // Combine rich categorized prototype products with any backend products
+  const allCatalogProducts = useMemo(() => {
+    const map = new Map<string, Product>();
+    // Seed with all 100 prototype items (with real categories & emojis)
+    STORE_PRODUCTS.forEach((p) => map.set(p.stock_code, p));
+    // Overlay any backend loaded products
+    products.forEach((p) => {
+      const existing = map.get(p.stock_code);
+      if (existing) {
+        map.set(p.stock_code, {
+          ...existing,
+          ...p,
+          category: p.category || existing.category,
+          emoji: p.emoji || existing.emoji,
+        });
+      } else {
+        map.set(p.stock_code, p);
+      }
+    });
+    return Array.from(map.values());
+  }, [products]);
+
+  // Strictly filter products:
+  // 1. When a category (e.g. Dairy) is clicked, only Dairy products are shown.
+  // 2. When searching while a category is clicked, it searches ONLY within that category.
+  // 3. When 'all' is clicked, it shows all products across all categories.
+  const displayedProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return allCatalogProducts.filter((p) => {
+      // 1. Category check
+      const matchesCat =
+        selectedCategory.toLowerCase() === 'all' ||
+        (p.category && p.category.toLowerCase() === selectedCategory.toLowerCase());
+
+      if (!matchesCat) return false;
+
+      // 2. Search query check (within the selected category)
+      if (!query) return true;
+
+      return (
+        p.product_name.toLowerCase().includes(query) ||
+        p.stock_code.toLowerCase().includes(query)
+      );
+    });
+  }, [allCatalogProducts, selectedCategory, searchQuery]);
+
+  const filteredSuggestions = searchQuery.trim().length > 0 ? displayedProducts.slice(0, 8) : [];
+
+  const handleCategoryClick = (catId: string) => {
+    setSelectedCategory(catId);
+    setSuggestionsOpen(false);
+  };
 
   const handleSelectProduct = (p: Product) => {
     onAddToCart(p, 1);
@@ -134,14 +187,14 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
         <div className="refined-main-card">
           {/* Category Filter Chips */}
           <div className="pos-category-bar">
-            {['all', 'Grocery', 'Dairy', 'Beverages', 'Snacks', 'Personal'].map((cat) => (
+            {CATEGORIES.map((cat) => (
               <button
-                key={cat}
+                key={cat.id}
                 type="button"
-                className={`pos-cat-chip${selectedCategory.toLowerCase() === cat.toLowerCase() ? ' active' : ''}`}
-                onClick={() => setSelectedCategory(cat)}
+                className={`pos-cat-chip${selectedCategory.toLowerCase() === cat.id.toLowerCase() ? ' active' : ''}`}
+                onClick={() => handleCategoryClick(cat.id)}
               >
-                {cat === 'all' ? 'All Items' : cat === 'Personal' ? 'Personal Care' : cat}
+                <span>{cat.emoji}</span> {cat.label}
               </button>
             ))}
           </div>
@@ -158,7 +211,11 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
                   type="text"
                   id="order-product-search"
                   className="search-input"
-                  placeholder="Type product name or SKU to search..."
+                  placeholder={
+                    selectedCategory === 'all'
+                      ? 'Type product name or SKU to search across all products...'
+                      : `Search strictly within ${selectedCategory} products...`
+                  }
                   autoComplete="off"
                   value={searchQuery}
                   onChange={(e) => {
@@ -190,9 +247,14 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
                         onClick={() => handleSelectProduct(p)}
                         style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', cursor: 'pointer' }}
                       >
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.product_name}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--blue)', fontFamily: 'monospace' }}>{p.stock_code}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '18px' }}>{p.emoji || '📦'}</span>
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.product_name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--blue)', fontFamily: 'monospace' }}>
+                              {p.stock_code} • {p.category || 'General'}
+                            </div>
+                          </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 700, color: '#34d399' }}>₹{p.unit_price.toFixed(2)}</div>
@@ -204,6 +266,174 @@ export const BillingScreen: React.FC<BillingScreenProps> = ({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Visual Interactive Product Catalog Shelf */}
+          <div className="pos-products-shelf" style={{ marginBottom: '18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {selectedCategory === 'all'
+                    ? `All Products (${displayedProducts.length} items)`
+                    : `${CATEGORIES.find((c) => c.id.toLowerCase() === selectedCategory.toLowerCase())?.emoji || '🏷️'} ${
+                        CATEGORIES.find((c) => c.id.toLowerCase() === selectedCategory.toLowerCase())?.label || selectedCategory
+                      } (${displayedProducts.length} items)`}
+                </span>
+                {searchQuery && (
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: '#60a5fa',
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    Scoped search: "{searchQuery}"
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                Click any product to add to order
+              </span>
+            </div>
+
+            {displayedProducts.length === 0 ? (
+              <div
+                style={{
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  borderRadius: '10px',
+                  border: '1px dashed var(--border)',
+                  marginBottom: '14px',
+                }}
+              >
+                <div style={{ fontSize: '26px', marginBottom: '6px' }}>🔍</div>
+                <p style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  No {selectedCategory !== 'all' ? selectedCategory : ''} products matching "{searchQuery}"
+                </p>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Search is scoped strictly to the selected {selectedCategory} category.
+                </p>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    style={{ fontSize: '12px', padding: '5px 12px' }}
+                    onClick={() => setSearchQuery('')}
+                  >
+                    Clear Search
+                  </button>
+                  {selectedCategory !== 'all' && (
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ fontSize: '12px', padding: '5px 12px' }}
+                      onClick={() => setSelectedCategory('all')}
+                    >
+                      Search across All Items
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div
+                className="pos-product-cards-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                  gap: '10px',
+                  maxHeight: '230px',
+                  overflowY: 'auto',
+                  paddingRight: '4px',
+                  paddingBottom: '4px',
+                }}
+              >
+                {displayedProducts.map((p) => {
+                  const cartQty = cart.find((item) => item.stock_code === p.stock_code)?.quantity || 0;
+                  return (
+                    <div
+                      key={p.stock_code}
+                      onClick={() => handleSelectProduct(p)}
+                      className="pos-product-card"
+                      style={{
+                        background: cartQty > 0 ? 'rgba(59, 130, 246, 0.10)' : 'var(--bg-input)',
+                        border: cartQty > 0 ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid var(--border)',
+                        borderRadius: '9px',
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        position: 'relative',
+                      }}
+                      title={`Click to add "${p.product_name}" to order`}
+                    >
+                      {cartQty > 0 && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '6px',
+                            right: '6px',
+                            background: 'var(--blue)',
+                            color: '#fff',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: '10px',
+                          }}
+                        >
+                          ×{cartQty}
+                        </span>
+                      )}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '20px' }}>{p.emoji || '📦'}</span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                            {p.stock_code}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            color: 'var(--text-primary)',
+                            lineHeight: 1.3,
+                            marginBottom: '6px',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {p.product_name}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginTop: '6px',
+                          paddingTop: '6px',
+                          borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#34d399' }}>
+                          ₹{p.unit_price.toFixed(0)}
+                        </span>
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                          {p.available_stock} left
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Selected Product Banner */}

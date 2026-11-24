@@ -26,6 +26,7 @@ class ProductOut(BaseModel):
     minimum_stock: int
     lead_time_days: int
     is_active: bool
+    category: Optional[str] = None
 
 
 class ProductListResponse(BaseModel):
@@ -47,11 +48,12 @@ class ProductDetailOut(ProductOut):
 @router.get("/products", response_model=ProductListResponse)
 def list_products(
     search: Optional[str] = Query(None, description="Search by stock_code or product_name"),
+    category: Optional[str] = Query(None, description="Filter by category (e.g. Dairy, Grocery)"),
     low_stock: bool = Query(False, description="Filter only low-stock items"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=200, description="Items per page"),
 ):
-    """List products with optional search, low-stock filter, and pagination."""
+    """List products with optional search, category filter, low-stock filter, and pagination."""
     offset = (page - 1) * page_size
 
     with get_connection() as conn:
@@ -59,6 +61,10 @@ def list_products(
             # Build WHERE clauses
             conditions = ["is_active = TRUE"]
             params: list = []
+
+            if category and category.lower() != 'all':
+                conditions.append("category ILIKE %s")
+                params.append(category)
 
             if search:
                 conditions.append(
@@ -81,10 +87,11 @@ def list_products(
             cur.execute(f"""
                 SELECT stock_code, product_name, unit_price, current_stock,
                        reserved_stock, (current_stock - reserved_stock) AS available_stock,
-                       safety_stock, minimum_stock, lead_time_days, is_active
+                       safety_stock, minimum_stock, lead_time_days, is_active,
+                       category
                 FROM products
                 WHERE {where_clause}
-                ORDER BY stock_code
+                ORDER BY CASE WHEN category IS NOT NULL THEN 0 ELSE 1 END, stock_code
                 LIMIT %s OFFSET %s
             """, params + [page_size, offset])
 
@@ -95,7 +102,7 @@ def list_products(
             stock_code=r[0], product_name=r[1], unit_price=float(r[2]),
             current_stock=r[3], reserved_stock=r[4], available_stock=r[5],
             safety_stock=r[6], minimum_stock=r[7], lead_time_days=r[8],
-            is_active=r[9],
+            is_active=r[9], category=r[10],
         )
         for r in rows
     ]

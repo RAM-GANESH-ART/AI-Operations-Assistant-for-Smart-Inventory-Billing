@@ -47,12 +47,14 @@ export const api = {
   // Products Catalog
   async getProducts(params?: {
     search?: string;
+    category?: string;
     low_stock?: boolean;
     page?: number;
     page_size?: number;
   }): Promise<ProductListResponse> {
     const query = new URLSearchParams();
     if (params?.search) query.append('search', params.search);
+    if (params?.category && params.category.toLowerCase() !== 'all') query.append('category', params.category);
     if (params?.low_stock) query.append('low_stock', 'true');
     if (params?.page) query.append('page', params.page.toString());
     if (params?.page_size) query.append('page_size', params.page_size.toString());
