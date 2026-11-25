@@ -1,7 +1,18 @@
 /**
  * TypeScript Data Contracts for Smart Inventory & Billing Frontend
- * Matches FastAPI backend REST API schemas exactly.
+ * Matches FastAPI backend REST API schemas and prototype screens.
  */
+
+export type ScreenId =
+  | 'dashboard'
+  | 'billing'
+  | 'transactions'
+  | 'inventory'
+  | 'forecasting'
+  | 'reorder'
+  | 'reports'
+  | 'activity'
+  | 'settings';
 
 export interface Product {
   stock_code: string;
@@ -14,6 +25,8 @@ export interface Product {
   minimum_stock: number;
   lead_time_days: number;
   is_active: boolean;
+  category?: string;
+  sold?: number;
 }
 
 export interface ProductListResponse {
@@ -109,6 +122,8 @@ export interface CartItem {
   quantity: number;
   available_stock: number;
   line_total: number;
+  hsn?: string;
+  gst_rate?: number;
 }
 
 export interface CheckoutRequest {
@@ -134,6 +149,7 @@ export interface InvoiceReceipt {
   payment_method: string;
   total_amount: number;
   items: InvoiceItemOut[];
+  invoice_date?: string;
 }
 
 export interface InvoiceSummary {
@@ -149,4 +165,27 @@ export interface InvoiceSummary {
 export interface InvoiceListResponse {
   total: number;
   invoices: InvoiceSummary[];
+}
+
+export interface ActivityLogItem {
+  id: string;
+  type: 'order' | 'stock' | 'reorder' | 'alert';
+  title: string;
+  desc: string;
+  timestamp: string;
+  badge?: string;
+}
+
+export interface StoreSettings {
+  storeName: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+  gstNumber: string;
+  lowStockAlerts: boolean;
+  expiryAlerts: boolean;
+  dailySalesSummary: boolean;
+  reorderNotif: boolean;
+  aiForecasting: boolean;
+  autoReorder: boolean;
 }

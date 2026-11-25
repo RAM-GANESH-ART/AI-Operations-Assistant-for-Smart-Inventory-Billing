@@ -1,48 +1,87 @@
 import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { Catalog } from './components/Catalog';
-import { ForecastView } from './components/ForecastView';
-import { ReorderView } from './components/ReorderView';
-import { BillingTerminal } from './components/BillingTerminal';
-import { InvoiceHistory } from './components/InvoiceHistory';
+import { TopHeader } from './components/TopHeader';
+import { LockModal } from './components/LockModal';
+import { BillModal } from './components/BillModal';
+import { Toast, ToastMessage } from './components/Toast';
+
+import { DashboardScreen } from './components/DashboardScreen';
+import { BillingScreen } from './components/BillingScreen';
+import { TransactionsScreen } from './components/TransactionsScreen';
+import { InventoryScreen } from './components/InventoryScreen';
+import { ForecastingScreen } from './components/ForecastingScreen';
+import { ReorderScreen } from './components/ReorderScreen';
+import { ReportsScreen } from './components/ReportsScreen';
+import { ActivityScreen } from './components/ActivityScreen';
+import { SettingsScreen } from './components/SettingsScreen';
+
 import { api } from './services/api';
-import { CartItem, Product } from './types';
+import { CartItem, InvoiceReceipt, Product, ScreenId } from './types';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeScreen, setActiveScreen] = useState<ScreenId>('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [activeReceipt, setActiveReceipt] = useState<InvoiceReceipt | null>(null);
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedForecastSku, setSelectedForecastSku] = useState<string>('10002');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [modelLoaded, setModelLoaded] = useState<boolean>(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
-  // Cross-screen state: Forecast SKU selected from Catalog/Alerts
-  const [selectedForecastSku, setSelectedForecastSku] = useState<string>('10002');
+  const showToast = (msg: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    const id = `t-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setToasts((prev) => [...prev, { id, msg, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3500);
+  };
 
-  // Shared shopping cart state across screens
-  const [cart, setCart] = useState<CartItem[]>([]);
-
-  // Health check on initial load & periodic ping
+  // Health check & products load
   useEffect(() => {
+    let isMounted = true;
+
     const checkHealth = async () => {
       try {
         const health = await api.getHealth();
-        setIsBackendConnected(health.status === 'running');
-        setModelLoaded(health.model_loaded);
+        if (isMounted) {
+          setIsBackendConnected(health.status === 'running');
+          setModelLoaded(health.model_loaded);
+        }
       } catch {
-        setIsBackendConnected(false);
-        setModelLoaded(false);
+        if (isMounted) {
+          setIsBackendConnected(false);
+          setModelLoaded(false);
+        }
+      }
+    };
+
+    const loadProducts = async () => {
+      try {
+        const res = await api.getProducts({ page_size: 100 });
+        if (isMounted && res.products) {
+          setProducts(res.products);
+          if (res.products.length > 0 && !selectedForecastSku) {
+            setSelectedForecastSku(res.products[0].stock_code);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load initial product catalog', err);
       }
     };
 
     checkHealth();
-    const interval = setInterval(checkHealth, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    loadProducts();
 
-  const handleNavigateToForecast = (sku: string) => {
-    setSelectedForecastSku(sku);
-    setActiveTab('forecast');
-  };
+    const interval = setInterval(checkHealth, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleAddToCart = (product: Product, quantity = 1) => {
     setCart((prev) => {
@@ -71,7 +110,7 @@ export function App() {
     });
   };
 
-  const handleUpdateCartQuantity = (stockCode: string, qty: number) => {
+  const handleUpdateCartQty = (stockCode: string, qty: number) => {
     setCart((prev) =>
       prev.map((item) =>
         item.stock_code === stockCode
@@ -87,111 +126,132 @@ export function App() {
 
   const handleRemoveFromCart = (stockCode: string) => {
     setCart((prev) => prev.filter((item) => item.stock_code !== stockCode));
+    showToast('Item removed from cart', 'info');
   };
 
   const handleClearCart = () => {
     setCart([]);
   };
 
-  // Screen title/subtitle map
-  const screenMeta: Record<string, { title: string; subtitle: string }> = {
-    dashboard: { title: 'Store Operations Dashboard', subtitle: 'Real-time inventory valuation, stock health & predictive demand KPIs' },
-    catalog:   { title: 'Product Catalog', subtitle: 'Browse, search, and manage all SKUs in your inventory' },
-    forecast:  { title: 'Demand Forecast', subtitle: 'AI-powered 7-day demand predictions using Random Forest ML model' },
-    reorder:   { title: 'Reorder Engine', subtitle: 'Smart replenishment recommendations with owner override controls' },
-    billing:   { title: 'POS Billing Terminal', subtitle: 'Atomic checkout with PostgreSQL row-locking & Idempotency-Key safety' },
-    invoices:  { title: 'Invoice History', subtitle: 'Full transaction ledger with receipt viewer and payment breakdown' },
+  const handleNavigateToForecast = (sku: string) => {
+    setSelectedForecastSku(sku);
+    setActiveScreen('forecasting');
   };
-
-  const meta = screenMeta[activeTab] || { title: 'SmartOps AI', subtitle: '' };
 
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      {/* Prototype Sidebar */}
       <Sidebar
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        activeScreen={activeScreen}
+        onSelectScreen={setActiveScreen}
         collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-        cartCount={cart.length}
       />
 
-      <div className="main-content">
-        {/* Top Header Bar */}
-        <header className="top-header">
-          <div className="header-left">
-            <div>
-              <h1 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                {meta.title}
-              </h1>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                {meta.subtitle}
-              </p>
-            </div>
-          </div>
+      {/* Main Content Area */}
+      <main className="main-content">
+        {/* Prototype Top Header */}
+        <TopHeader
+          onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onSelectScreen={setActiveScreen}
+          onLockTerminal={() => setIsLocked(true)}
+          isBackendConnected={isBackendConnected}
+          modelLoaded={modelLoaded}
+          onShowToast={showToast}
+        />
 
-          <div className="header-actions">
-            <div className={`status-pill ${isBackendConnected ? 'online' : 'offline'}`}>
-              <span className={`status-dot ${isBackendConnected ? 'green' : 'red'}`} />
-              {isBackendConnected ? (modelLoaded ? 'RF Model Active' : 'API Online') : 'API Offline'}
-            </div>
-          </div>
-        </header>
-
-        {/* Screen Content */}
+        {/* 9 Prototype Screens */}
         <div className="screens-container">
-          {activeTab === 'dashboard' && (
-            <div className="screen">
-              <Dashboard
-                onNavigateToCatalog={() => setActiveTab('catalog')}
-                onNavigateToForecast={handleNavigateToForecast}
-                onNavigateToReorder={() => setActiveTab('reorder')}
-              />
-            </div>
+          {activeScreen === 'dashboard' && (
+            <DashboardScreen onNavigate={setActiveScreen} />
           )}
 
-          {activeTab === 'catalog' && (
-            <div className="screen">
-              <Catalog
-                onNavigateToForecast={handleNavigateToForecast}
-                onAddToCart={handleAddToCart}
-              />
-            </div>
+          {activeScreen === 'billing' && (
+            <BillingScreen
+              products={products}
+              cart={cart}
+              onAddToCart={handleAddToCart}
+              onUpdateCartQty={handleUpdateCartQty}
+              onRemoveFromCart={handleRemoveFromCart}
+              onClearCart={handleClearCart}
+              onReceiptCreated={(r) => setActiveReceipt(r)}
+              onShowToast={showToast}
+            />
           )}
 
-          {activeTab === 'forecast' && (
-            <div className="screen">
-              <ForecastView
-                initialStockCode={selectedForecastSku}
-                onNavigateToReorder={() => setActiveTab('reorder')}
-              />
-            </div>
+          {activeScreen === 'transactions' && (
+            <TransactionsScreen
+              onNavigate={setActiveScreen}
+              onViewReceipt={(r) => setActiveReceipt(r)}
+              onShowToast={showToast}
+            />
           )}
 
-          {activeTab === 'reorder' && (
-            <div className="screen">
-              <ReorderView onNavigateToForecast={handleNavigateToForecast} />
-            </div>
+          {activeScreen === 'inventory' && (
+            <InventoryScreen
+              products={products}
+              onNavigateToForecast={handleNavigateToForecast}
+              onAddToCart={(p) => {
+                handleAddToCart(p, 1);
+                showToast(`Added ${p.product_name} to cart`, 'success');
+              }}
+              onShowToast={showToast}
+            />
           )}
 
-          {activeTab === 'billing' && (
-            <div className="screen">
-              <BillingTerminal
-                cart={cart}
-                onUpdateCartQuantity={handleUpdateCartQuantity}
-                onRemoveFromCart={handleRemoveFromCart}
-                onClearCart={handleClearCart}
-                onAddToCart={handleAddToCart}
-              />
-            </div>
+          {activeScreen === 'forecasting' && (
+            <ForecastingScreen
+              products={products}
+              selectedSku={selectedForecastSku}
+              onSelectSku={setSelectedForecastSku}
+              onShowToast={showToast}
+            />
           )}
 
-          {activeTab === 'invoices' && (
-            <div className="screen">
-              <InvoiceHistory />
-            </div>
+          {activeScreen === 'reorder' && (
+            <ReorderScreen
+              onNavigateToForecast={handleNavigateToForecast}
+              onShowToast={showToast}
+            />
+          )}
+
+          {activeScreen === 'reports' && (
+            <ReportsScreen
+              products={products}
+              onShowToast={showToast}
+            />
+          )}
+
+          {activeScreen === 'activity' && (
+            <ActivityScreen onShowToast={showToast} />
+          )}
+
+          {activeScreen === 'settings' && (
+            <SettingsScreen onShowToast={showToast} />
           )}
         </div>
-      </div>
+      </main>
+
+      {/* Global Bill / Receipt Modal */}
+      <BillModal
+        receipt={activeReceipt}
+        onClose={() => setActiveReceipt(null)}
+        onNewOrder={() => {
+          setActiveReceipt(null);
+          setActiveScreen('billing');
+        }}
+      />
+
+      {/* Terminal Lock Screen Modal */}
+      <LockModal
+        isOpen={isLocked}
+        onResume={() => {
+          setIsLocked(false);
+          showToast('Session unlocked', 'success');
+        }}
+      />
+
+      {/* Toast Notification Container */}
+      <Toast toasts={toasts} />
     </div>
   );
 }
